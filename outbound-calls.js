@@ -46,30 +46,63 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
+  // async function fetchElevenLabsPrompt() {
+  //   try {
+  //     const response = await fetch(
+  //       `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
+  //       {
+  //         method: 'GET',
+  //         headers: {
+  //           'xi-api-key': ELEVENLABS_API_KEY
+  //         }
+  //       }
+  //     );
+  //     console.log('Response:', response);
+
+  //     if (!response.ok) {
+  //       throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
+  //     }
+
+  //     const data = await response.json();
+  //     return data.prompt;
+  //   } catch (error) {
+  //     console.error("Error fetching ElevenLabs prompt:", error);
+  //     return "Error fetching prompt.";
+  //   }
+  // }
   async function fetchElevenLabsPrompt() {
     try {
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
-        {
-          method: 'GET',
-          headers: {
-            'xi-api-key': ELEVENLABS_API_KEY
-          }
+        const response = await fetch(
+            `https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`,
+            {
+                method: 'GET',
+                headers: {
+                    'xi-api-key': ELEVENLABS_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
         }
-      );
-      console.log('Response:', response);
 
-      if (!response.ok) {
-        throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.prompt;
+        const data = await response.json();
+        
+        // Extract the prompt from the nested object
+        const prompt = data?.conversation_config?.agent?.prompt?.prompt;
+        
+        if (!prompt) {
+            throw new Error("Prompt not found in response");
+        }
+        
+        return prompt;
     } catch (error) {
-      console.error("Error fetching ElevenLabs prompt:", error);
-      return "Error fetching prompt.";
+        console.error("Error fetching ElevenLabs prompt:", error);
+        return "Error fetching prompt.";
     }
-  }
+}
+
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
      const { number } = request.body;
