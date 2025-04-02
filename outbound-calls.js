@@ -101,9 +101,6 @@ export function registerOutboundRoutes(fastify) {
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const prompt = request.query.prompt || '';
-    console.log('Prompt:', prompt);
-
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
@@ -144,10 +141,11 @@ export function registerOutboundRoutes(fastify) {
               conversation_config_override: {
                 agent: {
                   prompt: { prompt: elevenLabsPrompt },
-                  first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
+                  // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
               }
             };
+            console.log('[ElevenLabs] Initial config:', initialConfig);
 
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
 
