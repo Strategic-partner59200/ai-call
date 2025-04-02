@@ -64,7 +64,7 @@ export function registerOutboundRoutes(fastify) {
       }
 
       const data = await response.json();
-      return data.prompt || "Default prompt not found";
+      return data.prompt;
     } catch (error) {
       console.error("Error fetching ElevenLabs prompt:", error);
       return "Error fetching prompt.";
