@@ -19,6 +19,8 @@ export function registerOutboundRoutes(fastify) {
   // Initialize Twilio client
   const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
+
+  
   // Helper function to get signed URL for authenticated conversations
   async function getSignedUrl() {
     try {
@@ -44,9 +46,32 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
+  async function fetchElevenLabsPrompt() {
+    try {
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': ELEVENLABS_API_KEY
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.prompt || "Default prompt not found";
+    } catch (error) {
+      console.error("Error fetching ElevenLabs prompt:", error);
+      return "Error fetching prompt.";
+    }
+  }
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
-     const { number, prompt } = request.body;
+     const { number } = request.body;
 
     if (!number) {
       return reply.code(400).send({ error: "Phone number is required" });
@@ -56,7 +81,7 @@ export function registerOutboundRoutes(fastify) {
       const call = await twilioClient.calls.create({
         from: TWILIO_PHONE_NUMBER,
         to: number,
-        url: `https://${request.headers.host}/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}`
+        url: `https://${request.headers.host}/outbound-call-twiml`
       });
 
       reply.send({ 
@@ -79,13 +104,11 @@ export function registerOutboundRoutes(fastify) {
     console.log('Prompt:', prompt);
 
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Connect>
-          <Stream url="wss://${request.headers.host}/outbound-media-stream">
-            <Parameter name="prompt" value="${prompt}" />
-          </Stream>
-        </Connect>
-      </Response>`;
+    <Response>
+      <Connect>
+        <Stream url="wss://${request.headers.host}/outbound-media-stream" />
+      </Connect>
+    </Response>`;
 
     reply.type("text/xml").send(twimlResponse);
   });
@@ -107,6 +130,7 @@ export function registerOutboundRoutes(fastify) {
       // Set up ElevenLabs connection
       const setupElevenLabs = async () => {
         try {
+          const elevenLabsPrompt = await fetchElevenLabsPrompt();
           const signedUrl = await getSignedUrl();
           elevenLabsWs = new WebSocket(signedUrl);
 
@@ -118,7 +142,7 @@ export function registerOutboundRoutes(fastify) {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
                 agent: {
-                  prompt: { prompt: customParameters?.prompt },
+                  prompt: { prompt: elevenLabsPrompt },
                   first_message: "Bonjour, je suis Sarah de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
               }
