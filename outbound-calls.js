@@ -1,8 +1,7 @@
 import WebSocket from "ws";
 import Twilio from "twilio";
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage, ref, uploadString } from "firebase/storage";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { stringify } from 'csv-stringify/sync';
 
 // Firebase configuration
@@ -12,13 +11,14 @@ const firebaseConfig = {
   projectId: process.env.FIREBASE_PROJECT_ID,
   storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID,
+
 };
 
-// Initialize Firebase
+// Initialize Firebase - only storage is needed
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
-const storage = getStorage(firebaseApp);
+const storage = getStorage(firebaseApp)
 
 // Helper function to generate CSV from conversation data
 function generateConversationCSV(conversationData) {
@@ -37,21 +37,37 @@ function generateConversationCSV(conversationData) {
   });
 }
 
-// Helper function to upload CSV to Firebase Storage
+// Improved upload function with better error handling
 async function uploadConversationToStorage(callSid, csvData) {
   try {
+    if (!callSid || !csvData) {
+      throw new Error("Missing required parameters for upload");
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `conversations/${callSid}_${timestamp}.csv`;
     const storageRef = ref(storage, fileName);
     
-    await uploadString(storageRef, csvData, 'raw', {
-      contentType: 'text/csv'
-    });
+    // Create a Blob from the CSV data
+    const blob = new Blob([csvData], { type: 'text/csv' });
     
-    console.log(`CSV file uploaded successfully: ${fileName}`);
-    return fileName;
+    // Upload the file
+    const snapshot = await uploadBytes(storageRef, blob);
+    console.log('Uploaded a blob or file!', snapshot);
+    
+    // Get the download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('File available at', downloadURL);
+    
+    return downloadURL;
   } catch (error) {
     console.error('Error uploading conversation CSV:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      stack: error.stack,
+      customData: error.customData
+    });
     throw error;
   }
 }
@@ -184,7 +200,9 @@ export function registerOutboundRoutes(fastify) {
       let conversationData = [];
 
       // Handle WebSocket errors
-      ws.on('error', console.error);
+      ws.on('error', (error) => {
+        console.error("[Twilio] WebSocket error:", error);
+      });
 
       // Set up ElevenLabs connection
       const setupElevenLabs = async () => {
@@ -223,35 +241,49 @@ export function registerOutboundRoutes(fastify) {
           elevenLabsWs.on("message", (data) => {
             try {
               const message = JSON.parse(data);
+              console.debug("[ElevenLabs] Received message:", message);
               
               // Track ElevenLabs responses
-              if (message.type === "audio" && message.audio?.chunk) {
-                conversationData.push({
-                  timestamp: new Date().toISOString(),
-                  speaker: 'Bot',
-                  messageType: 'Audio Response',
-                  content: 'Audio chunk',
-                  sizeBytes: message.audio.chunk.length,
-                  additionalInfo: ''
-                });
+              if (message.type === "audio") {
+                const audioChunk = message.audio?.chunk || message.audio_base64;
+                if (audioChunk) {
+                  conversationData.push({
+                    timestamp: new Date().toISOString(),
+                    speaker: 'Bot',
+                    messageType: 'Audio Response',
+                    content: 'Audio chunk',
+                    sizeBytes: audioChunk.length,
+                    additionalInfo: ''
+                  });
+                }
               }
 
+              // Handle all message types
               switch (message.type) {
-                case "conversation_initiation_metadata":
-                  break;
-
                 case "audio":
-                  if (streamSid) {
+                  if (streamSid && (message.audio?.chunk || message.audio_base64)) {
                     const audioData = {
                       event: "media",
                       streamSid,
                       media: {
-                        payload: message.audio.chunk,
+                        payload: message.audio?.chunk || message.audio_base64,
                         content_type: "audio/x-mulaw; rate=8000",
                       }
                     };
                     ws.send(JSON.stringify(audioData));
                   }
+                  break;
+
+                case "agent_response":
+                case "agent_response_correction":
+                  conversationData.push({
+                    timestamp: new Date().toISOString(),
+                    speaker: 'System',
+                    messageType: message.type,
+                    content: message.text || JSON.stringify(message),
+                    sizeBytes: 0,
+                    additionalInfo: ''
+                  });
                   break;
 
                 case "interruption":
@@ -274,9 +306,25 @@ export function registerOutboundRoutes(fastify) {
 
                 default:
                   console.log(`[ElevenLabs] Unhandled message type: ${message.type}`);
+                  conversationData.push({
+                    timestamp: new Date().toISOString(),
+                    speaker: 'System',
+                    messageType: 'Unhandled',
+                    content: JSON.stringify(message),
+                    sizeBytes: 0,
+                    additionalInfo: `Type: ${message.type}`
+                  });
               }
             } catch (error) {
               console.error("[ElevenLabs] Error processing message:", error);
+              conversationData.push({
+                timestamp: new Date().toISOString(),
+                speaker: 'System',
+                messageType: 'Error',
+                content: 'Failed to process message',
+                sizeBytes: 0,
+                additionalInfo: error.message
+              });
             }
           });
 
@@ -300,6 +348,7 @@ export function registerOutboundRoutes(fastify) {
       ws.on("message", (message) => {
         try {
           const msg = JSON.parse(message);
+          console.debug("[Twilio] Received message:", msg);
 
           switch (msg.event) {
             case "start":
