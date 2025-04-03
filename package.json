@@ -22,7 +22,7 @@
     "dotenv": "^16.4.7",
     "elevenlabs": "^0.18.1",
     "fastify": "^5.1.0",
-    "firebase": "^10.7.0",
+    "firebase": "^10.14.1",
     "node-fetch": "^3.3.2",
     "twilio": "^5.3.7",
     "ws": "^8.18.0"
