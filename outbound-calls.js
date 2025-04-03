@@ -3,7 +3,7 @@ import Twilio from "twilio";
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { stringify } from 'csv-stringify/sync';
-import { initializeApp } from "firebase/app";
+
 // import { getAnalytics } from "firebase/analytics";
 
 // Firebase configuration
