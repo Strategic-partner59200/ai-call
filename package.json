@@ -17,9 +17,11 @@
     "@fastify/websocket": "^11.0.1",
     "@types/node": "^18.0.6",
     "axios": "^1.7.9",
+    "csv-stringify": "^6.5.2",
     "dotenv": "^16.4.7",
     "elevenlabs": "^0.18.1",
     "fastify": "^5.1.0",
+    "firebase": "^11.6.0",
     "node-fetch": "^3.3.2",
     "twilio": "^5.3.7",
     "ws": "^8.18.0"
