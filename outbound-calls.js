@@ -159,7 +159,7 @@ export function registerOutboundRoutes(fastify) {
       ws.on('error', console.error);
 
       // Set up ElevenLabs connection
-      const setupElevenLabs = async (calledNumber, callSid) => {
+      const setupElevenLabs = async () => {
         try {
           const elevenLabsPrompt = await fetchElevenLabsPrompt();
           const signedUrl = await getSignedUrl();
@@ -180,8 +180,6 @@ export function registerOutboundRoutes(fastify) {
                   system__agent_id: ELEVENLABS_AGENT_ID,
                   system__called_number: calledNumber,
                   system__call_sid: callSid,
-                  system__time_utc: new Date().toISOString(),
-                  system__conversation_id: require('crypto').randomBytes(16).toString('hex')
                 }
               }
             };
