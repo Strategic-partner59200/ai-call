@@ -156,13 +156,13 @@ export function registerOutboundRoutes(fastify) {
                 },
               },
               dynamic_variables: {
-                system__agent_id: ELEVENLABS_AGENT_ID,
-                system__caller_id: TWILIO_PHONE_NUMBER,
-                system__time_utc: timeUTC,
-                system__call_sid: callSid,
-                system__called_number: calledNumber, // Include the called number
-                system__conversation_id: null, // Will be set by ElevenLabs
-                system__call_duration_secs: 0
+                agent_id: ELEVENLABS_AGENT_ID,  // Changed from system__agent_id
+                caller_id: TWILIO_PHONE_NUMBER,  // Changed from system__caller_id
+                time_utc: timeUTC,               // Changed from system__time_utc
+                call_sid: callSid,               // Changed from system__call_sid
+                called_number: calledNumber,      // Changed from system__called_number
+                conversation_id: null,           // Changed from system__conversation_id
+                call_duration_secs: 0     
               }
             };
             
