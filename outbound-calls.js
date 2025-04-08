@@ -103,50 +103,50 @@ export function registerOutboundRoutes(fastify) {
     }
 }
 
-// Route to initiate outbound calls
-fastify.post("/outbound-call", async (request, reply) => {
-  const { number } = request.body;
+  // Route to initiate outbound calls
+  fastify.post("/outbound-call", async (request, reply) => {
+     const { number } = request.body;
 
-  if (!number) {
-    return reply.code(400).send({ error: "Phone number is required" });
-  }
+    if (!number) {
+      return reply.code(400).send({ error: "Phone number is required" });
+    }
 
-  try {
-    const call = await twilioClient.calls.create({
-      from: TWILIO_PHONE_NUMBER,
-      to: number,
-      url: `https://${request.headers.host}/outbound-call-twiml?To=${encodeURIComponent(number)}`
-    });
+    try {
+      const call = await twilioClient.calls.create({
+        from: TWILIO_PHONE_NUMBER,
+        to: number,
+        url: `https://${request.headers.host}/outbound-call-twiml?To=${encodeURIComponent(number)}`
+      });
 
-    reply.send({ 
-      success: true, 
-      message: "Call initiated", 
-      callSid: call.sid 
-    });
-  } catch (error) {
-    console.error("Error initiating outbound call:", error);
-    reply.code(500).send({ 
-      success: false, 
-      error: "Failed to initiate call" 
-    });
-  }
-});
+      reply.send({ 
+        success: true, 
+        message: "Call initiated", 
+        callSid: call.sid 
+      });
+    } catch (error) {
+      console.error("Error initiating outbound call:", error);
+      reply.code(500).send({ 
+        success: false, 
+        error: "Failed to initiate call" 
+      });
+    }
+  });
 
   // TwiML route for outbound calls
-fastify.all("/outbound-call-twiml", async (request, reply) => {
-  const { To } = request.query; // Get the called number from Twilio
+  fastify.all("/outbound-call-twiml", async (request, reply) => {
+    const calledNumber = request.query.To;
+    
+    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+      <Connect>
+        <Stream url="wss://${request.headers.host}/outbound-media-stream">
+          <Parameter name="calledNumber" value="${calledNumber}" />
+        </Stream>
+      </Connect>
+    </Response>`;
   
-  const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-  <Response>
-    <Connect>
-      <Stream url="wss://${request.headers.host}/outbound-media-stream">
-        <Parameter name="calledNumber" value="${To}" />
-      </Stream>
-    </Connect>
-  </Response>`;
-
-  reply.type("text/xml").send(twimlResponse);
-});
+    reply.type("text/xml").send(twimlResponse);
+  });
 
   // WebSocket route for handling media streams
   fastify.register(async (fastifyInstance) => {
@@ -158,12 +158,13 @@ fastify.all("/outbound-call-twiml", async (request, reply) => {
       let callSid = null;
       let elevenLabsWs = null;
       let customParameters = null;  // Add this to store parameters
+      let calledNumber = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
 
       // Set up ElevenLabs connection
-      const setupElevenLabs = async (calledNumber) => {
+      const setupElevenLabs = async (number) => {
         try {
           const elevenLabsPrompt = await fetchElevenLabsPrompt();
           const signedUrl = await getSignedUrl();
@@ -182,7 +183,8 @@ fastify.all("/outbound-call-twiml", async (request, reply) => {
                 },
               },
               dynamic_variables: {
-                called_number: calledNumber  // Include the called number here
+                system__called_number: number,  // This is the key change
+                system__call_sid: callSid      // Also sending call SID for reference
               }
             };
             console.log('[ElevenLabs] Initial config:', initialConfig);
@@ -290,18 +292,22 @@ fastify.all("/outbound-call-twiml", async (request, reply) => {
 
           switch (msg.event) {
             case "start":
+              
+           
+              customParameters = msg.start.customParameters;  // Store parameters
               streamSid = msg.start.streamSid;
-  callSid = msg.start.callSid;
-  customParameters = msg.start.customParameters;
-  console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
-  
-  // Get the called number from custom parameters and pass to setupElevenLabs
-  const calledNumber = customParameters?.calledNumber;
-  if (calledNumber) {
-    setupElevenLabs(calledNumber);
-  } else {
-    setupElevenLabs(); // Fallback if no number provided
-  }
+            callSid = msg.start.callSid;
+            calledNumber = msg.start.customParameters?.calledNumber;
+            
+            console.log(`[Twilio] Stream started - Called number: ${calledNumber}`);
+            
+            // Initialize ElevenLabs with the called number
+            if (calledNumber) {
+              setupElevenLabs(calledNumber);
+            } else {
+              console.error("No called number provided");
+              ws.close();
+            }
               break;
 
             case "media":
