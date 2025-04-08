@@ -176,6 +176,10 @@ export function registerOutboundRoutes(fastify) {
                   prompt: { prompt: elevenLabsPrompt },
                   // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
+                system: {
+                  system__called_number: customParameters?.To || "Unknown",
+                  system__call_sid: callSid || "Unknown"
+                }
               }
             };
             console.log('[ElevenLabs] Initial config:', initialConfig);
