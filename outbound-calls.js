@@ -157,7 +157,6 @@ export function registerOutboundRoutes(fastify) {
       let streamSid = null;
       let callSid = null;
       let elevenLabsWs = null;
-      let customParameters = null;  // Add this to store parameters
       let calledNumber = null;
 
       // Handle WebSocket errors
