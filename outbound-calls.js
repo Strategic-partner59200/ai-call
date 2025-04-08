@@ -159,7 +159,7 @@ export function registerOutboundRoutes(fastify) {
       ws.on('error', console.error);
 
       // Set up ElevenLabs connection
-      const setupElevenLabs = async () => {
+      const setupElevenLabs = async (calledNumber, callSid) => {
         try {
           const elevenLabsPrompt = await fetchElevenLabsPrompt();
           const signedUrl = await getSignedUrl();
@@ -177,9 +177,11 @@ export function registerOutboundRoutes(fastify) {
                   // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
                 dynamic_variables: {
-                  system__called_number: customParameters?.To || "Unknown",
-                  system__call_sid: callSid || "Unknown",
-                  system__time_utc: new Date().toISOString()
+                  system__agent_id: ELEVENLABS_AGENT_ID,
+                  system__called_number: calledNumber,
+                  system__call_sid: callSid,
+                  system__time_utc: new Date().toISOString(),
+                  system__conversation_id: require('crypto').randomBytes(16).toString('hex')
                 }
               }
             };
@@ -291,8 +293,11 @@ export function registerOutboundRoutes(fastify) {
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
               customParameters = msg.start.customParameters;  // Store parameters
+              const calledNumber = msg.start.customParameters?.To || "Unknown";
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
+              console.log(`[Twilio] Called number: ${calledNumber}`);
+              setupElevenLabs(calledNumber, callSid);
               break;
 
             case "media":
