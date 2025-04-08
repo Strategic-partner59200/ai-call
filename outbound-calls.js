@@ -19,8 +19,6 @@ export function registerOutboundRoutes(fastify) {
   // Initialize Twilio client
   const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-
-  
   // Helper function to get signed URL for authenticated conversations
   async function getSignedUrl() {
     try {
@@ -46,66 +44,42 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
-  // async function fetchElevenLabsPrompt() {
-  //   try {
-  //     const response = await fetch(
-  //       `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
-  //       {
-  //         method: 'GET',
-  //         headers: {
-  //           'xi-api-key': ELEVENLABS_API_KEY
-  //         }
-  //       }
-  //     );
-  //     console.log('Response:', response);
-
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
-  //     }
-
-  //     const data = await response.json();
-  //     return data.prompt;
-  //   } catch (error) {
-  //     console.error("Error fetching ElevenLabs prompt:", error);
-  //     return "Error fetching prompt.";
-  //   }
-  // }
   async function fetchElevenLabsPrompt() {
     try {
-        const response = await fetch(
-            `https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`,
-            {
-                method: 'GET',
-                headers: {
-                    'xi-api-key': ELEVENLABS_API_KEY,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': ELEVENLABS_API_KEY,
+            'Content-Type': 'application/json'
+          }
         }
+      );
 
-        const data = await response.json();
-        
-        // Extract the prompt from the nested object
-        const prompt = data?.conversation_config?.agent?.prompt?.prompt;
-        
-        if (!prompt) {
-            throw new Error("Prompt not found in response");
-        }
-        
-        return prompt;
+      if (!response.ok) {
+        throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Extract the prompt from the nested object
+      const prompt = data?.conversation_config?.agent?.prompt?.prompt;
+      
+      if (!prompt) {
+        throw new Error("Prompt not found in response");
+      }
+      
+      return prompt;
     } catch (error) {
-        console.error("Error fetching ElevenLabs prompt:", error);
-        return "Error fetching prompt.";
+      console.error("Error fetching ElevenLabs prompt:", error);
+      return "Error fetching prompt.";
     }
-}
+  }
 
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
-     const { number } = request.body;
+    const { number } = request.body;
 
     if (!number) {
       return reply.code(400).send({ error: "Phone number is required" });
@@ -115,7 +89,7 @@ export function registerOutboundRoutes(fastify) {
       const call = await twilioClient.calls.create({
         from: TWILIO_PHONE_NUMBER,
         to: number,
-        url: `https://${request.headers.host}/outbound-call-twiml?called_number=${encodeURIComponent(number)}`
+        url: `https://${request.headers.host}/outbound-call-twiml`
       });
 
       reply.send({ 
@@ -134,13 +108,10 @@ export function registerOutboundRoutes(fastify) {
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const calledNumber = request.query.called_number || 'unknown';
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
-   <Stream url="wss://${request.headers.host}/outbound-media-stream">
-          <Parameter name="called_number" value="${calledNumber}" />
-        </Stream>
+        <Stream url="wss://${request.headers.host}/outbound-media-stream" />
       </Connect>
     </Response>`;
 
@@ -155,9 +126,9 @@ export function registerOutboundRoutes(fastify) {
       // Variables to track the call
       let streamSid = null;
       let callSid = null;
+      let calledNumber = null; // Store the called number
       let elevenLabsWs = null;
-      let customParameters = null;  // Add this to store parameters
-  
+      let customParameters = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -172,24 +143,30 @@ export function registerOutboundRoutes(fastify) {
           elevenLabsWs.on("open", () => {
             console.log("[ElevenLabs] Connected to Conversational AI");
 
-            // Send initial configuration with prompt and first message
+            // Get current UTC time
+            const now = new Date();
+            const timeUTC = now.toISOString();
+
+            // Send initial configuration with prompt and dynamic variables
             const initialConfig = {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
                 agent: {
                   prompt: { prompt: elevenLabsPrompt },
-                  // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
-                dynamic_variables: {
-                  system__agent_id: ELEVENLABS_AGENT_ID,
-                  system__called_number: null, // Will be updated later
-                  system__call_sid: null,      // Will be updated later
-                  system__conversation_id: streamSid // You can use streamSid as a conversation ID
-                }
+              },
+              dynamic_variables: {
+                system__agent_id: ELEVENLABS_AGENT_ID,
+                system__caller_id: TWILIO_PHONE_NUMBER,
+                system__time_utc: timeUTC,
+                system__call_sid: callSid,
+                system__called_number: calledNumber, // Include the called number
+                system__conversation_id: null, // Will be set by ElevenLabs
+                system__call_duration_secs: 0
               }
             };
+            
             console.log('[ElevenLabs] Initial config:', initialConfig);
-
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
 
             // Send the configuration to ElevenLabs
@@ -282,9 +259,6 @@ export function registerOutboundRoutes(fastify) {
         }
       };
 
-      // Set up ElevenLabs connection
-      setupElevenLabs();
-
       // Handle messages from Twilio
       ws.on("message", (message) => {
         try {
@@ -295,24 +269,15 @@ export function registerOutboundRoutes(fastify) {
             case "start":
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
-              customParameters = msg.start.customParameters;  // Store parameters
+              calledNumber = msg.start.customParameters?.calledNumber; // Get called number from custom parameters
+              customParameters = msg.start.customParameters;
               
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
-              
-    const params = data.start.customParameters || {};
-    calledNumber = params.called_number;
+              console.log('[Twilio] Called number:', calledNumber);
               console.log('[Twilio] Start parameters:', customParameters);
-              console.log(`[Twilio] Called number: ${calledNumber}`);
-              if (elevenLabsWs?.readyState === WebSocket.OPEN) {
-                const updateConfig = {
-                  type: "conversation_update",
-                  dynamic_variables: {
-                    system__called_number: calledNumber,
-                    system__call_sid: callSid
-                  }
-                };
-                elevenLabsWs.send(JSON.stringify(updateConfig));
-              }
+              
+              // Set up ElevenLabs connection after we have the call details
+              setupElevenLabs();
               break;
 
             case "media":
@@ -338,7 +303,6 @@ export function registerOutboundRoutes(fastify) {
           console.error("[Twilio] Error processing message:", error);
         }
       });
-  
 
       // Handle WebSocket closure
       ws.on("close", () => {
