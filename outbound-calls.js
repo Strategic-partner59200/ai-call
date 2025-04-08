@@ -115,7 +115,7 @@ export function registerOutboundRoutes(fastify) {
       const call = await twilioClient.calls.create({
         from: TWILIO_PHONE_NUMBER,
         to: number,
-        url: `https://${request.headers.host}/outbound-call-twiml`
+        url: `https://${request.headers.host}/outbound-call-twiml?called_number=${encodeURIComponent(number)}`
       });
 
       reply.send({ 
@@ -134,13 +134,13 @@ export function registerOutboundRoutes(fastify) {
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const { To } = request.query; // Get the called number from the request
+    const calledNumber = request.query.called_number || 'unknown';
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
    <Stream url="wss://${request.headers.host}/outbound-media-stream">
-        <Parameter name="To" value="${To}" />
-      </Stream>
+          <Parameter name="called_number" value="${calledNumber}" />
+        </Stream>
       </Connect>
     </Response>`;
 
@@ -157,6 +157,7 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let elevenLabsWs = null;
       let customParameters = null;  // Add this to store parameters
+  
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -295,8 +296,11 @@ export function registerOutboundRoutes(fastify) {
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
               customParameters = msg.start.customParameters;  // Store parameters
-              const calledNumber = msg.start.customParameters?.To || "Unknown";
+              
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
+              
+    const params = data.start.customParameters || {};
+    calledNumber = params.called_number;
               console.log('[Twilio] Start parameters:', customParameters);
               console.log(`[Twilio] Called number: ${calledNumber}`);
               if (elevenLabsWs?.readyState === WebSocket.OPEN) {
