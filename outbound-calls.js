@@ -19,6 +19,8 @@ export function registerOutboundRoutes(fastify) {
   // Initialize Twilio client
   const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
+
+  
   // Helper function to get signed URL for authenticated conversations
   async function getSignedUrl() {
     try {
@@ -44,41 +46,64 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
+  // async function fetchElevenLabsPrompt() {
+  //   try {
+  //     const response = await fetch(
+  //       `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
+  //       {
+  //         method: 'GET',
+  //         headers: {
+  //           'xi-api-key': ELEVENLABS_API_KEY
+  //         }
+  //       }
+  //     );
+  //     console.log('Response:', response);
+
+  //     if (!response.ok) {
+  //       throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
+  //     }
+
+  //     const data = await response.json();
+  //     return data.prompt;
+  //   } catch (error) {
+  //     console.error("Error fetching ElevenLabs prompt:", error);
+  //     return "Error fetching prompt.";
+  //   }
+  // }
   async function fetchElevenLabsPrompt() {
     try {
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`,
-        {
-          method: 'GET',
-          headers: {
-            'xi-api-key': ELEVENLABS_API_KEY,
-            'Content-Type': 'application/json'
-          }
+        const response = await fetch(
+            `https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`,
+            {
+                method: 'GET',
+                headers: {
+                    'xi-api-key': ELEVENLABS_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
         }
-      );
 
-      if (!response.ok) {
-        throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      // Extract the prompt from the nested object
-      const prompt = data?.conversation_config?.agent?.prompt?.prompt;
-      
-      if (!prompt) {
-        throw new Error("Prompt not found in response");
-      }
-      
-      return prompt;
+        const data = await response.json();
+        
+        // Extract the prompt from the nested object
+        const prompt = data?.conversation_config?.agent?.prompt?.prompt;
+        
+        if (!prompt) {
+            throw new Error("Prompt not found in response");
+        }
+        
+        return prompt;
     } catch (error) {
-      console.error("Error fetching ElevenLabs prompt:", error);
-      return "Error fetching prompt.";
+        console.error("Error fetching ElevenLabs prompt:", error);
+        return "Error fetching prompt.";
     }
-  }
+}
 
-  // Route to initiate outbound calls
- // Route to initiate outbound calls
+// Route to initiate outbound calls
 fastify.post("/outbound-call", async (request, reply) => {
   const { number } = request.body;
 
@@ -90,16 +115,7 @@ fastify.post("/outbound-call", async (request, reply) => {
     const call = await twilioClient.calls.create({
       from: TWILIO_PHONE_NUMBER,
       to: number,
-      url: `https://${request.headers.host}/outbound-call-twiml`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      statusCallback: `https://${request.headers.host}/call-status`,
-      twiml: `<Response>
-        <Connect>
-          <Stream url="wss://${request.headers.host}/outbound-media-stream">
-            <Parameter name="calledNumber" value="${number}"/>
-          </Stream>
-        </Connect>
-      </Response>`
+      url: `https://${request.headers.host}/outbound-call-twiml?To=${encodeURIComponent(number)}`
     });
 
     reply.send({ 
@@ -117,16 +133,20 @@ fastify.post("/outbound-call", async (request, reply) => {
 });
 
   // TwiML route for outbound calls
-  fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Connect>
-        <Stream url="wss://${request.headers.host}/outbound-media-stream" />
-      </Connect>
-    </Response>`;
+fastify.all("/outbound-call-twiml", async (request, reply) => {
+  const { To } = request.query; // Get the called number from Twilio
+  
+  const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+  <Response>
+    <Connect>
+      <Stream url="wss://${request.headers.host}/outbound-media-stream">
+        <Parameter name="calledNumber" value="${To}" />
+      </Stream>
+    </Connect>
+  </Response>`;
 
-    reply.type("text/xml").send(twimlResponse);
-  });
+  reply.type("text/xml").send(twimlResponse);
+});
 
   // WebSocket route for handling media streams
   fastify.register(async (fastifyInstance) => {
@@ -136,15 +156,14 @@ fastify.post("/outbound-call", async (request, reply) => {
       // Variables to track the call
       let streamSid = null;
       let callSid = null;
-      let calledNumber = null; // Store the called number
       let elevenLabsWs = null;
-      let customParameters = null;
+      let customParameters = null;  // Add this to store parameters
 
       // Handle WebSocket errors
       ws.on('error', console.error);
 
       // Set up ElevenLabs connection
-      const setupElevenLabs = async () => {
+      const setupElevenLabs = async (calledNumber) => {
         try {
           const elevenLabsPrompt = await fetchElevenLabsPrompt();
           const signedUrl = await getSignedUrl();
@@ -153,30 +172,21 @@ fastify.post("/outbound-call", async (request, reply) => {
           elevenLabsWs.on("open", () => {
             console.log("[ElevenLabs] Connected to Conversational AI");
 
-            // Get current UTC time
-            const now = new Date();
-            const timeUTC = now.toISOString();
-
-            // Send initial configuration with prompt and dynamic variables
+            // Send initial configuration with prompt and first message
             const initialConfig = {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
                 agent: {
                   prompt: { prompt: elevenLabsPrompt },
+                  // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
               },
               dynamic_variables: {
-                agent_id: ELEVENLABS_AGENT_ID,
-                caller_id: TWILIO_PHONE_NUMBER,
-                called_number: calledNumber, // This should now have the actual number
-                time_utc: timeUTC,
-                call_sid: callSid,
-                conversation_id: null,
-                call_duration_secs: 0
+                called_number: calledNumber  // Include the called number here
               }
             };
-            
             console.log('[ElevenLabs] Initial config:', initialConfig);
+
             console.log("[ElevenLabs] Sending initial config with prompt:", initialConfig.conversation_config_override.agent.prompt.prompt);
 
             // Send the configuration to ElevenLabs
@@ -269,6 +279,9 @@ fastify.post("/outbound-call", async (request, reply) => {
         }
       };
 
+      // Set up ElevenLabs connection
+      setupElevenLabs();
+
       // Handle messages from Twilio
       ws.on("message", (message) => {
         try {
@@ -278,18 +291,17 @@ fastify.post("/outbound-call", async (request, reply) => {
           switch (msg.event) {
             case "start":
               streamSid = msg.start.streamSid;
-              callSid = msg.start.callSid;
-              calledNumber = msg.start.customParameters?.calledNumber || 
-              msg.start.customParameters?.CalledNumber || 
-              msg.start.customParameters?.To;
-              customParameters = msg.start.customParameters;
-              
-              console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
-              console.log('[Twilio] Called number:', calledNumber);
-              console.log('[Twilio] Start parameters:', customParameters);
-              
-              // Set up ElevenLabs connection after we have the call details
-              setupElevenLabs();
+  callSid = msg.start.callSid;
+  customParameters = msg.start.customParameters;
+  console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
+  
+  // Get the called number from custom parameters and pass to setupElevenLabs
+  const calledNumber = customParameters?.calledNumber;
+  if (calledNumber) {
+    setupElevenLabs(calledNumber);
+  } else {
+    setupElevenLabs(); // Fallback if no number provided
+  }
               break;
 
             case "media":
@@ -315,6 +327,7 @@ fastify.post("/outbound-call", async (request, reply) => {
           console.error("[Twilio] Error processing message:", error);
         }
       });
+  
 
       // Handle WebSocket closure
       ws.on("close", () => {
