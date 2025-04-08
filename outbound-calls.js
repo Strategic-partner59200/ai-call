@@ -78,33 +78,43 @@ export function registerOutboundRoutes(fastify) {
   }
 
   // Route to initiate outbound calls
-  fastify.post("/outbound-call", async (request, reply) => {
-    const { number } = request.body;
+ // Route to initiate outbound calls
+fastify.post("/outbound-call", async (request, reply) => {
+  const { number } = request.body;
 
-    if (!number) {
-      return reply.code(400).send({ error: "Phone number is required" });
-    }
+  if (!number) {
+    return reply.code(400).send({ error: "Phone number is required" });
+  }
 
-    try {
-      const call = await twilioClient.calls.create({
-        from: TWILIO_PHONE_NUMBER,
-        to: number,
-        url: `https://${request.headers.host}/outbound-call-twiml`
-      });
+  try {
+    const call = await twilioClient.calls.create({
+      from: TWILIO_PHONE_NUMBER,
+      to: number,
+      url: `https://${request.headers.host}/outbound-call-twiml`,
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      statusCallback: `https://${request.headers.host}/call-status`,
+      twiml: `<Response>
+        <Connect>
+          <Stream url="wss://${request.headers.host}/outbound-media-stream">
+            <Parameter name="calledNumber" value="${number}"/>
+          </Stream>
+        </Connect>
+      </Response>`
+    });
 
-      reply.send({ 
-        success: true, 
-        message: "Call initiated", 
-        callSid: call.sid 
-      });
-    } catch (error) {
-      console.error("Error initiating outbound call:", error);
-      reply.code(500).send({ 
-        success: false, 
-        error: "Failed to initiate call" 
-      });
-    }
-  });
+    reply.send({ 
+      success: true, 
+      message: "Call initiated", 
+      callSid: call.sid 
+    });
+  } catch (error) {
+    console.error("Error initiating outbound call:", error);
+    reply.code(500).send({ 
+      success: false, 
+      error: "Failed to initiate call" 
+    });
+  }
+});
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
@@ -128,7 +138,7 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let calledNumber = null; // Store the called number
       let elevenLabsWs = null;
-      let customParameters = null;
+      // let customParameters = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -156,13 +166,13 @@ export function registerOutboundRoutes(fastify) {
                 },
               },
               dynamic_variables: {
-                agent_id: ELEVENLABS_AGENT_ID,  // Changed from system__agent_id
-                caller_id: TWILIO_PHONE_NUMBER,  // Changed from system__caller_id
-                time_utc: timeUTC,               // Changed from system__time_utc
-                call_sid: callSid,               // Changed from system__call_sid
-                called_number: calledNumber,      // Changed from system__called_number
-                conversation_id: null,           // Changed from system__conversation_id
-                call_duration_secs: 0     
+                agent_id: ELEVENLABS_AGENT_ID,
+                caller_id: TWILIO_PHONE_NUMBER,
+                called_number: calledNumber, // This should now have the actual number
+                time_utc: timeUTC,
+                call_sid: callSid,
+                conversation_id: null,
+                call_duration_secs: 0
               }
             };
             
@@ -269,7 +279,9 @@ export function registerOutboundRoutes(fastify) {
             case "start":
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
-              calledNumber = msg.start.customParameters?.calledNumber; // Get called number from custom parameters
+              calledNumber = msg.start.customParameters?.calledNumber || 
+              msg.start.customParameters?.CalledNumber || 
+              msg.start.customParameters?.To;
               customParameters = msg.start.customParameters;
               
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
