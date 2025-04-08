@@ -297,7 +297,6 @@ export function registerOutboundRoutes(fastify) {
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
               console.log(`[Twilio] Called number: ${calledNumber}`);
-              setupElevenLabs(calledNumber, callSid);
               break;
 
             case "media":
