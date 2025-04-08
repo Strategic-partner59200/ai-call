@@ -134,10 +134,13 @@ export function registerOutboundRoutes(fastify) {
 
   // TwiML route for outbound calls
   fastify.all("/outbound-call-twiml", async (request, reply) => {
+    const { To } = request.query; // Get the called number from the request
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
-        <Stream url="wss://${request.headers.host}/outbound-media-stream" />
+   <Stream url="wss://${request.headers.host}/outbound-media-stream">
+        <Parameter name="To" value="${To}" />
+      </Stream>
       </Connect>
     </Response>`;
 
@@ -154,7 +157,6 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let elevenLabsWs = null;
       let customParameters = null;  // Add this to store parameters
-      let calledNumber = null;  // Add this to store the called number
 
       // Handle WebSocket errors
       ws.on('error', console.error);
@@ -179,8 +181,9 @@ export function registerOutboundRoutes(fastify) {
                 },
                 dynamic_variables: {
                   system__agent_id: ELEVENLABS_AGENT_ID,
-                  system__called_number: calledNumber,
-                  system__call_sid: callSid,
+                  system__called_number: null, // Will be updated later
+                  system__call_sid: null,      // Will be updated later
+                  system__conversation_id: streamSid // You can use streamSid as a conversation ID
                 }
               }
             };
@@ -296,6 +299,16 @@ export function registerOutboundRoutes(fastify) {
               console.log(`[Twilio] Stream started - StreamSid: ${streamSid}, CallSid: ${callSid}`);
               console.log('[Twilio] Start parameters:', customParameters);
               console.log(`[Twilio] Called number: ${calledNumber}`);
+              if (elevenLabsWs?.readyState === WebSocket.OPEN) {
+                const updateConfig = {
+                  type: "conversation_update",
+                  dynamic_variables: {
+                    system__called_number: calledNumber,
+                    system__call_sid: callSid
+                  }
+                };
+                elevenLabsWs.send(JSON.stringify(updateConfig));
+              }
               break;
 
             case "media":
