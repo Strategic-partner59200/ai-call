@@ -138,7 +138,7 @@ fastify.post("/outbound-call", async (request, reply) => {
       let callSid = null;
       let calledNumber = null; // Store the called number
       let elevenLabsWs = null;
-      // let customParameters = null;
+      let customParameters = null;
 
       // Handle WebSocket errors
       ws.on('error', console.error);
