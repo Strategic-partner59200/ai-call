@@ -133,7 +133,7 @@ export function registerOutboundRoutes(fastify) {
   });
 
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const toNumber = request.body.to || request.query.to;
+    const toNumber = request.body.To || request.query.To;
     
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
@@ -180,11 +180,6 @@ export function registerOutboundRoutes(fastify) {
                   // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
               },
-              dynamic_variables: {
-
-                system__called_number: customParameters?.to || '' // Add this to pass the recipient's number
-            
-              }
             };
             console.log('[ElevenLabs] Initial config:', initialConfig);
 
