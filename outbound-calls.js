@@ -133,13 +133,13 @@ export function registerOutboundRoutes(fastify) {
   });
 
   fastify.all("/outbound-call-twiml", async (request, reply) => {
-    const { To } = request.query; // Get recipient number from Twilio request
+    const toNumber = request.body.to || request.query.to;
     
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
         <Stream url="wss://${request.headers.host}/outbound-media-stream">
-          <Parameter name="recipient_number" value="${To}" />
+          <Parameter name="recipient_number" value="${toNumber}" />
         </Stream>
       </Connect>
     </Response>`;
