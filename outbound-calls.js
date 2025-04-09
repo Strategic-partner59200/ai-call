@@ -30,7 +30,7 @@ export function registerOutboundRoutes(fastify) {
           method: 'GET',
           headers: {
             'xi-api-key': ELEVENLABS_API_KEY
-          }
+          },
         }
       );
 
@@ -46,30 +46,7 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
-  // async function fetchElevenLabsPrompt() {
-  //   try {
-  //     const response = await fetch(
-  //       `https://api.elevenlabs.io/v1/convai/conversation/get_prompt?agent_id=${ELEVENLABS_AGENT_ID}`,
-  //       {
-  //         method: 'GET',
-  //         headers: {
-  //           'xi-api-key': ELEVENLABS_API_KEY
-  //         }
-  //       }
-  //     );
-  //     console.log('Response:', response);
 
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to get ElevenLabs prompt: ${response.statusText}`);
-  //     }
-
-  //     const data = await response.json();
-  //     return data.prompt;
-  //   } catch (error) {
-  //     console.error("Error fetching ElevenLabs prompt:", error);
-  //     return "Error fetching prompt.";
-  //   }
-  // }
   async function fetchElevenLabsPrompt() {
     try {
         const response = await fetch(
@@ -180,6 +157,11 @@ export function registerOutboundRoutes(fastify) {
                   // first_message: "Bonjour, je suis Fridiric de Mon Réseau Habitat. Je vous appelle suite à la demande que vous avez faite pour obtenir des informations sur les aides de l'État pour la rénovation"
                 },
               },
+              dynamic_variables: {
+
+                recipient_number: customParameters?.recipient_number || ''
+            
+              }
             };
             console.log('[ElevenLabs] Initial config:', initialConfig);
 
